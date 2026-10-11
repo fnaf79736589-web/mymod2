@@ -14,17 +14,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.1.1
-      - name: Unzip project
+      - name: Prepare project
         run: |
-          n=$(ls *.zip | wc -l)
-          if [ "$n" -ne 1 ]; then echo "У сховищі має бути рівно один zip, а зараз: $n"; ls *.zip; exit 1; fi
-          unzip -q *.zip
+          echo "Файли в сховищі:"; ls -la
+          if ls *.zip >/dev/null 2>&1; then
+            n=$(ls *.zip | wc -l)
+            if [ "$n" -ne 1 ]; then echo "ПОМИЛКА: потрібен рівно один zip, зараз: $n"; exit 1; fi
+            unzip -q *.zip || { echo "ПОМИЛКА: zip не розпакувався"; exit 1; }
+          fi
+          find . -name build.gradle -not -path "./.git/*"
       - name: Build
         run: |
-          d=$(dirname "$(find . -name build.gradle | head -1)")
-          cd "$d"
-          gradle build --no-daemon
+          f=$(find . -name build.gradle -not -path "./.git/*" | head -1)
+          if [ -z "$f" ]; then echo "ПОМИЛКА: build.gradle не знайдено"; exit 1; fi
+          cd "$(dirname "$f")"
+          gradle build --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          exit ${PIPESTATUS[0]}
+      - name: Save log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: mod-jar
-          path: "*/build/libs/*.jar"
+          path: "**/build/libs/*.jar"
